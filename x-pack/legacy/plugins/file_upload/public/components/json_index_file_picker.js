@@ -98,8 +98,10 @@ export class JsonIndexFilePicker extends Component {
       'xpack.fileUpload.jsonIndexFilePicker.parsingFile',
       { defaultMessage: 'Parsing file...' })
     });
+
+    // TODO: Allow this to be interrupted
     const parsedFileResult = await parseFile(
-      file, transformDetails, onFileUpload
+      file, transformDetails, onFileUpload, chunk => console.log(`got chunks: `, chunk)
     ).catch(err => {
       if (this._isMounted) {
         this.setState({
