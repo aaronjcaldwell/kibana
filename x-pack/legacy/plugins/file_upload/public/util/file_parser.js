@@ -7,8 +7,10 @@
 import _ from 'lodash';
 import { geoJsonCleanAndValidate } from './geo_json_clean_and_validate';
 import { i18n } from '@kbn/i18n';
+const oboe = require('oboe');
 
 export async function readFile(file) {
+  fileHandler(file);
   const readPromise = new Promise((resolve, reject) => {
     if (!file) {
       reject(new Error(i18n.translate(
@@ -61,6 +63,7 @@ export async function parseFile(file, transformDetails, previewCallback = null) 
   }
 
   const rawResults = await readFile(file);
+  // Stream to both parseFile caller and preview callback
   const parsedJson = JSON.parse(rawResults);
   const jsonResult = cleanAndValidate(parsedJson);
   jsonPreview(jsonResult, previewCallback);
@@ -68,3 +71,34 @@ export async function parseFile(file, transformDetails, previewCallback = null) 
   return jsonResult;
 }
 
+const FILE_BUFFER = 1024 * 50;
+let fileReader;
+
+const readSlice = (file, start, stop) => {
+  const blob = file.slice(start, stop);
+  fileReader.readAsBinaryString(blob);
+};
+
+const fileHandler = (file, fileBuffer = FILE_BUFFER) => {
+  const oboeStream = oboe();
+  let start;
+  let stop = fileBuffer;
+
+  fileReader = new FileReader();
+  fileReader.onloadend = ({ target }) => {
+    const { readyState, result } = target;
+    if (readyState === FileReader.DONE) {
+      oboeStream.emit('data', result);
+      if (!stop) {
+        return;
+      }
+      start = stop;
+      const newStop = stop + fileBuffer;
+      // Check EOF
+      stop = newStop > file.size ? undefined : newStop;
+      readSlice(file, start, stop);
+    }
+  };
+  readSlice(file, start, stop);
+  oboeStream.node('features.*', feature => console.log(feature));
+};
