@@ -4,7 +4,6 @@
  * you may not use this file except in compliance with the Elastic License.
  */
 
-import { Observable } from 'rxjs';
 import _ from 'lodash';
 import { geoJsonCleanAndValidate } from './geo_json_clean_and_validate';
 import { i18n } from '@kbn/i18n';
@@ -18,20 +17,25 @@ const readSlice = (file, start, stop) => {
   fileReader.readAsBinaryString(blob);
 };
 
-const fileHandler = (file, fileBuffer = FILE_BUFFER) => {
+const fileHandler = (file, chunkHandler, cleanAndValidate, fileBuffer = FILE_BUFFER) => {
   const oboeStream = oboe();
   let start;
   let stop = fileBuffer;
-
   fileReader = new FileReader();
+
   fileReader.onloadend = ({ target }) => {
     const { readyState, result } = target;
     if (readyState === FileReader.DONE) {
+      chunkHandler({
+        bytesProcessed: stop || file.size,
+        totalBytes: file.size
+      })
       oboeStream.emit('data', result);
       if (!stop) {
+        console.log('stoppped');
         return;
       }
-      console.log('break');
+
       start = stop;
       const newStop = stop + fileBuffer;
       // Check EOF
@@ -39,41 +43,32 @@ const fileHandler = (file, fileBuffer = FILE_BUFFER) => {
       readSlice(file, start, stop);
     }
   };
-  readSlice(file, start, stop);
 
-  return new Observable(subscriber => {
-    oboeStream.node('features.*', feature => subscriber.next(feature));
-    oboeStream.node('features', () => subscriber.complete());
-  });
-};
-
-export async function readFile(file, chunkHandler) {
-  const fileObservable = fileHandler(file);
-  fileObservable.subscribe({
-    next(x) { chunkHandler(x); },
-    error(err) { console.error('something wrong occurred: ' + err); },
-    complete() { console.log('done'); }
-  });
-  const readPromise = new Promise((resolve, reject) => {
+  const filePromise = new Promise((resolve, reject) => {
+    let featureCollection = [];
     if (!file) {
       reject(new Error(i18n.translate(
         'xpack.fileUpload.fileParser.noFileProvided', {
           defaultMessage: 'Error, no file provided',
         })));
     }
-    const fr = new window.FileReader();
-    fr.onload = e => resolve(e.target.result);
-    fr.onerror = () => {
-      fr.abort();
+    fileReader.onerror = () => {
+      fileReader.abort();
       reject(new Error(i18n.translate(
         'xpack.fileUpload.fileParser.errorReadingFile', {
           defaultMessage: 'Error reading file',
         })));
     };
-    fr.readAsText(file);
+    oboeStream.node({
+      'features.*': function (feature) {
+        const cleanFeatures = cleanAndValidate([feature]);
+        return cleanFeatures[0];
+      }
+    });
+    oboeStream.done(parsedGeojson => resolve(parsedGeojson));
   });
-
-  return await readPromise;
+  readSlice(file, start, stop);
+  return filePromise;
 }
 
 export function jsonPreview(json, previewFunction) {
@@ -85,7 +80,7 @@ export function jsonPreview(json, previewFunction) {
 }
 
 export async function parseFile(file, transformDetails, previewCallback = null,
-  onChunkUpload) {
+  onChunkParse) {
   let cleanAndValidate;
   if (typeof transformDetails === 'object') {
     cleanAndValidate = transformDetails.cleanAndValidate;
@@ -106,11 +101,10 @@ export async function parseFile(file, transformDetails, previewCallback = null,
     }
   }
 
-  const rawResults = await readFile(file, onChunkUpload);
+  const parsedJson = await fileHandler(file, onChunkParse, cleanAndValidate);
   // Stream to both parseFile caller and preview callback
-  const parsedJson = JSON.parse(rawResults);
-  const jsonResult = cleanAndValidate(parsedJson);
-  jsonPreview(jsonResult, previewCallback);
+  // const jsonResult = cleanAndValidate(parsedJson);
+  jsonPreview(parsedJson, previewCallback);
 
-  return jsonResult;
+  return parsedJson;
 }

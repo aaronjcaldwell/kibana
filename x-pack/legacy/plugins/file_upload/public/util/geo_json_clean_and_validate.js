@@ -7,34 +7,20 @@
 import * as jsts from 'jsts';
 import rewind from 'geojson-rewind';
 
-export function geoJsonCleanAndValidate(parsedFile) {
-
-  // Remove bbox property pending fix of bbox parsing issue in jsts lib
-  const { bbox, ...handledGeoJsonProperties } = parsedFile; // eslint-disable-line no-unused-vars
+export function geoJsonCleanAndValidate(features) {
 
   const reader = new jsts.io.GeoJSONReader();
-  const geoJson = reader.read(handledGeoJsonProperties);
-  const isSingleFeature = parsedFile.type === 'Feature';
-  const features = isSingleFeature
-    ? [{ ...geoJson }]
-    : geoJson.features;
+  const geoJson = reader.read({
+    type: 'FeatureCollection',
+    features
+  });
 
   // Pass features for cleaning
-  const cleanedFeatures = cleanFeatures(features);
+  const cleanedFeatures = cleanFeatures(geoJson.features);
 
-  // Put clean features back in geoJson object
-  const cleanGeoJson = {
-    ...parsedFile,
-    ...(isSingleFeature
-      ? cleanedFeatures[0]
-      : { features: cleanedFeatures }
-    ),
-  };
-
-  // Pass entire geoJson object for winding
   // JSTS does not enforce winding order, wind in clockwise order
-  const correctlyWindedGeoJson = rewind(cleanGeoJson, false);
-  return correctlyWindedGeoJson;
+  const correctlyWindedFeatures = rewind(cleanedFeatures, false);
+  return correctlyWindedFeatures;
 }
 
 export function cleanFeatures(features) {

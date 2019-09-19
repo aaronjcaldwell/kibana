@@ -21,6 +21,7 @@ export class JsonIndexFilePicker extends Component {
   state = {
     fileUploadError: '',
     fileParsingProgress: '',
+    filePercentage: 0
   };
 
   async componentDidMount() {
@@ -89,6 +90,13 @@ export class JsonIndexFilePicker extends Component {
     return splitNameArr[0];
   }
 
+  setFileProgress = ({ bytesProcessed, totalBytes }) => {
+    const newPercentage = (100 * bytesProcessed) / totalBytes;
+    if (newPercentage > (this.state.filePercentage + 10)) {
+      this.setState({ filePercentage: newPercentage });
+    }
+  }
+
   async _parseFile(file) {
     const {
       setFileRef, setParsedFile, resetFileAndIndexSettings, onFileUpload, transformDetails
@@ -101,7 +109,7 @@ export class JsonIndexFilePicker extends Component {
 
     // TODO: Allow this to be interrupted
     const parsedFileResult = await parseFile(
-      file, transformDetails, onFileUpload, chunk => console.log(`got chunks: `, chunk)
+      file, transformDetails, onFileUpload, this.setFileProgress
     ).catch(err => {
       if (this._isMounted) {
         this.setState({
@@ -130,11 +138,24 @@ export class JsonIndexFilePicker extends Component {
   }
 
   render() {
-    const { fileParsingProgress, fileUploadError } = this.state;
+    const {
+      fileParsingProgress,
+      fileUploadError,
+      filePercentage
+    } = this.state;
 
     return (
       <Fragment>
-        {fileParsingProgress ? <EuiProgress size="xs" color="accent" position="absolute" /> : null}
+        {fileParsingProgress
+          ? <EuiProgress
+              value={filePercentage}
+              max={100}
+              size="xs"
+              color="accent"
+              position="absolute"
+            />
+          : null
+        }
         <EuiFormRow
           label={
             <FormattedMessage
