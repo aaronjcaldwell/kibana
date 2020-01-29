@@ -8,7 +8,6 @@
 
 import { addSystemApiHeader } from 'ui/system_api';
 import { i18n } from '@kbn/i18n';
-import { kbnVersion } from '../kibana_services';
 
 export async function http(options) {
   if (!(options && options.url)) {
@@ -19,7 +18,8 @@ export async function http(options) {
   const url = options.url || '';
   const headers = addSystemApiHeader({
     'Content-Type': 'application/json',
-    'kbn-version': kbnVersion,
+    'kbn-xsrf': true,
+    asSystemRequest: true,
     ...options.headers,
   });
 
